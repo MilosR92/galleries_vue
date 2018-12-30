@@ -1,0 +1,238 @@
+<template>
+  <div class="create-gallery">
+    <h1>{{ editing ? 'Edit Gallery' : 'Create Gallery'}}</h1>
+    <form @submit.prevent="onSubmit">
+      <div class="form-group">
+        <label>Title</label>
+        <input 
+          v-model="gallery.title"
+          type="text" 
+          class="form-control" 
+          :placeholder="placeholder.title"
+          minlength="2"
+          maxlength="255"
+          required
+        >
+        <div v-if="errors">
+          <form-error v-if="errors.title">{{ errors.title[0] }}</form-error>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea 
+          v-model="gallery.description"                    
+          type="text" 
+          class="form-control" 
+          :placeholder="placeholder.description"
+          maxlength="1000"
+        >
+        </textarea>
+
+        <div v-if="errors">
+          <form-error v-if="errors.description">{{ errors.description[0] }}</form-error>
+        </div>
+      </div>
+
+      <div class="form-group" v-for="(n, index) in range" :key="index">
+        <label>Image {{ n }} URL</label>
+        <input 
+          v-model="images[index].url"
+          type="url"
+          class="form-control"
+          :placeholder="placeholder.url"
+          pattern="https?://.+(png|jpg|jpeg)"
+          required
+        >
+        <div v-if="errors">
+          <form-error v-if="errors.images">At least one image is required.</form-error>
+          <form-error v-if="errors[`images.${index}.url`]">Invalid format.</form-error>
+        </div>
+
+        <div class="btn-group">
+          <button 
+            type="button" 
+            class="btn btn-dark btn-sm"
+            @click="moveUp(index)"
+            :disabled="(range == 1) || (!index)"
+          >
+            <i class="fas fa-chevron-up"></i> Move Up
+          </button>
+          <button 
+            type="button"
+            class="btn btn-dark btn-sm"
+            @click="moveDown(index)"
+            :disabled="(range == 1) || (index == range - 1)"
+          >
+            <i class="fas fa-chevron-down"></i> Move down
+          </button>
+          <button 
+            type="button"
+            class="btn btn-dark btn-sm"
+            @click="remove(index)"
+            :disabled="range == 1"
+          >
+            <i class="far fa-trash-alt"></i> Delete
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        class="btn btn-dark"
+        @click="addInput"
+      >
+        Add Field
+      </button>
+
+      <button 
+        type="submit" 
+        class="btn btn-dark"
+      >
+        {{ editing ? 'Edit' : 'Create'}}
+      </button>
+
+      <button
+        type="button"
+        class="btn btn-dark"
+        @click="onCancel"
+      >
+        Cancel
+      </button>
+    </form>
+  </div>
+</template>
+
+<script>
+import galleryService from './../utils/services/gallery-service'
+import FormError from './partials/FormError'
+
+export default {
+  components: {
+    FormError
+  },
+
+  data() {
+    return {
+      range: 1,
+      gallery: {
+        title: '',
+        description: '',
+        images: []
+      },
+      images: [{ url: ''}],
+      errors: {},
+      editing: false,
+      galleryId: null,
+      placeholder: {
+        title: `\uf037 Title`,
+        description: `\uf039 Description`,
+        url: `\uf03e Insert URL`,
+      }
+    }
+  },
+
+  methods: {
+    addInput() {
+      this.range++
+      this.images.push({ url: '' })
+    },
+    moveUp(index) {
+      if(index) {        
+        this.images.splice( index - 1, 0, this.images.splice( index, 1 )[0])
+      }
+    },
+    moveDown(index) {
+      if(index != this.range -1 ) {
+        this.images.splice( index + 1, 0, this.images.splice( index, 1 )[0])
+      }
+    },
+    remove(index) {
+      if(this.range > 1) {        
+        this.range--
+        this.images.splice(index, 1)
+      }
+    },
+
+    onSubmit() {
+      if(this.images[0].url) {
+        this.gallery.images = this.images
+      }
+
+      if(this.editing) {
+        this.editGallery()
+      } else {
+        this.createGallery()
+      }      
+    },
+    onCancel() {
+      if(this.editing) {
+        this.$router.push({ name:'gallery', params: { id: this.gallery.id }})
+      } else {
+        this.$router.push({ name: 'my-galleries' })
+      }
+    },
+
+    createGallery() {
+      galleryService.createGallery(this.gallery)
+      .then(()=> {
+        this.errors = {}
+        this.$router.push({ name: 'my-galleries' })
+      })
+      .catch(errors => {
+        this.errors = errors.response.data.errors
+      })
+    },
+    
+    editGallery() {
+      if(this.gallery.user.id == Number(localStorage.getItem('id'))) {
+        galleryService.editGallery(this.galleryId, this.gallery)
+        .then(()=> {
+          this.errors= {}
+          this.$router.push({ name: 'gallery', params: { id: this.galleryId }})
+        })
+        .catch(errors => {
+          this.errors = errors.response.data.errors
+        })
+      }
+    }
+  },
+
+  beforeRouteEnter (to, from, next) {
+    next(vm => {
+      if(to.params.id) {
+        vm.galleryId = Number(to.params.id)  
+        vm.editing = true        
+        galleryService.getGallery(vm.galleryId)
+        .then(gallery => {          
+          vm.gallery = gallery
+          vm.images = gallery.images
+          vm.range = gallery.images.length
+          if(vm.gallery.user.id != Number(localStorage.getItem('id'))) {
+            vm.$router.push(from)
+          }
+        })
+      }
+    })
+  }
+}
+</script>
+
+<style scoped>
+
+.create-gallery {
+  max-width: 500px;
+}
+
+.btn {
+  margin: 0 1rem;
+}
+
+.btn-group {
+  margin: 0.5rem;
+}
+
+.btn-group .btn {
+  margin: 0;
+}
+</style>
